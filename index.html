@@ -59,6 +59,18 @@ nav{position:sticky;top:0;z-index:200;background:var(--green);display:flex;align
 .score-num{font-family:var(--font-d);font-size:84px;line-height:1;color:#fff}
 .score-sep{font-family:var(--font-d);font-size:52px;color:rgba(255,255,255,.4)}
 .live-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:8px;letter-spacing:.5px}
+.update-bar{
+  background:rgba(0,0,0,.25);border-top:1px solid rgba(255,255,255,.08);
+  text-align:center;padding:8px 32px;
+  display:flex;align-items:center;justify-content:center;gap:16px;
+  font-family:var(--font-m);font-size:10px;color:rgba(255,255,255,.4);
+  letter-spacing:.5px;flex-wrap:wrap;
+}
+.update-bar .upd-item{display:flex;align-items:center;gap:6px}
+.upd-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.2)}
+.upd-dot.active{background:#39D353;animation:blink 2s ease-in-out infinite}
+.upd-dot.error{background:#FF6B6B}
+.upd-sep{color:rgba(255,255,255,.15)}
 .live-min{color:var(--gold2);font-family:var(--font-m);font-weight:600}
 .side-col{display:flex;flex-direction:column;gap:7px}
 .side-label{font-size:9px;font-weight:800;letter-spacing:3px;color:rgba(255,255,255,.5);text-transform:uppercase;margin-bottom:3px}
@@ -285,6 +297,21 @@ footer strong{color:#fff}
     <div class="side-col" id="today-right"><div class="side-label">Hoy · Próximos</div></div>
   </div>
 </section>
+<div class="update-bar">
+  <div class="upd-item">
+    <div class="upd-dot" id="dot-live"></div>
+    <span>Marcador en vivo: <strong id="last-live">—</strong></span>
+  </div>
+  <div class="upd-sep">·</div>
+  <div class="upd-item">
+    <div class="upd-dot" id="dot-results"></div>
+    <span>Resultados y puntos: <strong id="last-results">—</strong></span>
+  </div>
+  <div class="upd-sep">·</div>
+  <div class="upd-item">
+    <span id="api-status">Conectando a la API...</span>
+  </div>
+</div>
 
 <div class="divider"></div>
 
@@ -964,61 +991,142 @@ function tloc(utc){
 }
 
 async function updateLiveBoard(){
-  const live = await apiFetch('status=IN_PLAY,PAUSED');
-  const today = new Date().toISOString().split('T')[0];
-  const all   = await apiFetch(`dateFrom=${today}&dateTo=${today}`);
-
   const lEl=document.getElementById('today-left');
   const rEl=document.getElementById('today-right');
   lEl.innerHTML='<div class="side-label">Hoy · Resultados</div>';
   rEl.innerHTML='<div class="side-label">Hoy · Próximos</div>';
 
-  if(live.length){
-    const m=live[0], t1=sn(m.homeTeam.name), t2=sn(m.awayTeam.name);
-    document.getElementById('lt1').textContent=t1;
-    document.getElementById('lt2').textContent=t2;
-    document.getElementById('lf1').textContent=FLAGS[t1]||'⚽';
-    document.getElementById('lf2').textContent=FLAGS[t2]||'⚽';
-    document.getElementById('ls1').textContent=m.score?.fullTime?.home??m.score?.halfTime?.home??'0';
-    document.getElementById('ls2').textContent=m.score?.fullTime?.away??m.score?.halfTime?.away??'0';
-    document.getElementById('lmin').textContent=m.minute?`${m.minute}'`:'EN VIVO';
-    document.getElementById('lvenue').textContent=m.venue||'';
-    document.getElementById('live-status-text').textContent='EN VIVO';
-  } else {
-    const nxt=all.find(m=>m.status==='TIMED'||m.status==='SCHEDULED');
-    if(nxt){
-      const t1=sn(nxt.homeTeam.name), t2=sn(nxt.awayTeam.name);
-      document.getElementById('lt1').textContent=t1;
-      document.getElementById('lt2').textContent=t2;
-      document.getElementById('lf1').textContent=FLAGS[t1]||'⚽';
-      document.getElementById('lf2').textContent=FLAGS[t2]||'⚽';
-      document.getElementById('ls1').textContent='—';
-      document.getElementById('ls2').textContent='—';
-      document.getElementById('lmin').textContent=tloc(nxt.utcDate);
-      document.getElementById('lvenue').textContent='hora México';
-      document.getElementById('live-status-text').textContent='PRÓXIMO';
-    }
-  }
+  try {
+    // ESPN public API — no key needed, real-time scores
+    const url = PROXY + encodeURIComponent(
+      'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard'
+    );
+    const res = await fetch(url);
+    const data = await res.json();
+    const events = data.events || [];
 
-  all.filter(m=>m.status==='FINISHED').slice(0,4).forEach(m=>{
-    const t1=sn(m.homeTeam.name), t2=sn(m.awayTeam.name);
-    lEl.innerHTML+=`<div class="mm">
-      <div class="mm-time">${tloc(m.utcDate)}</div>
-      <div class="mm-teams">${FLAGS[t1]||''} ${t1} vs ${t2} ${FLAGS[t2]||''}</div>
-      <div class="mm-score">${m.score?.fullTime?.home}-${m.score?.fullTime?.away}</div>
-      <div class="mm-tag done">FIN</div></div>`;
-  });
-  all.filter(m=>m.status==='TIMED'||m.status==='SCHEDULED').slice(0,4).forEach(m=>{
-    const t1=sn(m.homeTeam.name), t2=sn(m.awayTeam.name);
-    rEl.innerHTML+=`<div class="mm">
-      <div class="mm-time">${tloc(m.utcDate)}</div>
-      <div class="mm-teams">${FLAGS[t1]||''} ${t1} vs ${t2} ${FLAGS[t2]||''}</div>
-      <div class="mm-score">—</div>
-      <div class="mm-tag soon">HOY</div></div>`;
-  });
-  if(!all.length){
-    lEl.innerHTML+='<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">Sin partidos hoy</div>';
-    rEl.innerHTML+='<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">—</div>';
+    // Find live match
+    const live = events.filter(e => {
+      const st = e.competitions?.[0]?.status?.type?.name;
+      return st === 'STATUS_IN_PROGRESS' || st === 'STATUS_HALFTIME';
+    });
+
+    const finished = events.filter(e =>
+      e.competitions?.[0]?.status?.type?.name === 'STATUS_FINAL'
+    );
+
+    const upcoming = events.filter(e => {
+      const st = e.competitions?.[0]?.status?.type?.name;
+      return st === 'STATUS_SCHEDULED' || st === 'STATUS_POSTPONED';
+    });
+
+    if(live.length > 0){
+      const match = live[0];
+      const comp  = match.competitions[0];
+      const status = comp.status;
+      const home = comp.competitors.find(t => t.homeAway === 'home');
+      const away = comp.competitors.find(t => t.homeAway === 'away');
+      const t1 = sn(home.team.displayName);
+      const t2 = sn(away.team.displayName);
+
+      document.getElementById('lt1').textContent = t1;
+      document.getElementById('lt2').textContent = t2;
+      document.getElementById('lf1').textContent = FLAGS[t1] || '⚽';
+      document.getElementById('lf2').textContent = FLAGS[t2] || '⚽';
+      document.getElementById('ls1').textContent = home.score || '0';
+      document.getElementById('ls2').textContent = away.score || '0';
+      document.getElementById('lmin').textContent = status.displayClock
+        ? status.displayClock + "'"
+        : (status.type?.shortDetail || 'EN VIVO');
+      document.getElementById('lvenue').textContent =
+        comp.venue?.fullName || '';
+      document.getElementById('live-status-text').textContent = 'EN VIVO';
+
+    } else if(upcoming.length > 0){
+      const match = upcoming[0];
+      const comp  = match.competitions[0];
+      const home = comp.competitors.find(t => t.homeAway === 'home');
+      const away = comp.competitors.find(t => t.homeAway === 'away');
+      const t1 = sn(home.team.displayName);
+      const t2 = sn(away.team.displayName);
+
+      document.getElementById('lt1').textContent = t1;
+      document.getElementById('lt2').textContent = t2;
+      document.getElementById('lf1').textContent = FLAGS[t1] || '⚽';
+      document.getElementById('lf2').textContent = FLAGS[t2] || '⚽';
+      document.getElementById('ls1').textContent = '—';
+      document.getElementById('ls2').textContent = '—';
+      const kickoff = new Date(match.date).toLocaleTimeString('es-MX',
+        {hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
+      document.getElementById('lmin').textContent = kickoff;
+      document.getElementById('lvenue').textContent = 'hora México';
+      document.getElementById('live-status-text').textContent = 'PRÓXIMO';
+
+    } else if(finished.length > 0){
+      // All done today — show last result
+      const match = finished[finished.length-1];
+      const comp  = match.competitions[0];
+      const home = comp.competitors.find(t => t.homeAway === 'home');
+      const away = comp.competitors.find(t => t.homeAway === 'away');
+      const t1 = sn(home.team.displayName);
+      const t2 = sn(away.team.displayName);
+      document.getElementById('lt1').textContent = t1;
+      document.getElementById('lt2').textContent = t2;
+      document.getElementById('lf1').textContent = FLAGS[t1] || '⚽';
+      document.getElementById('lf2').textContent = FLAGS[t2] || '⚽';
+      document.getElementById('ls1').textContent = home.score || '—';
+      document.getElementById('ls2').textContent = away.score || '—';
+      document.getElementById('lmin').textContent = 'FT';
+      document.getElementById('lvenue').textContent = 'Partido terminado';
+      document.getElementById('live-status-text').textContent = 'FINALIZADO';
+    }
+
+    // Side panels
+    finished.slice(0,4).forEach(e => {
+      const comp = e.competitions[0];
+      const home = comp.competitors.find(t => t.homeAway === 'home');
+      const away = comp.competitors.find(t => t.homeAway === 'away');
+      const t1 = sn(home.team.displayName), t2 = sn(away.team.displayName);
+      const kickoff = new Date(e.date).toLocaleTimeString('es-MX',
+        {hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
+      lEl.innerHTML += `<div class="mm">
+        <div class="mm-time">${kickoff}</div>
+        <div class="mm-teams">${FLAGS[t1]||''} ${t1} vs ${t2} ${FLAGS[t2]||''}</div>
+        <div class="mm-score">${home.score}-${away.score}</div>
+        <div class="mm-tag done">FIN</div></div>`;
+    });
+
+    upcoming.slice(0,4).forEach(e => {
+      const comp = e.competitions[0];
+      const home = comp.competitors.find(t => t.homeAway === 'home');
+      const away = comp.competitors.find(t => t.homeAway === 'away');
+      const t1 = sn(home.team.displayName), t2 = sn(away.team.displayName);
+      const kickoff = new Date(e.date).toLocaleTimeString('es-MX',
+        {hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
+      rEl.innerHTML += `<div class="mm">
+        <div class="mm-time">${kickoff}</div>
+        <div class="mm-teams">${FLAGS[t1]||''} ${t1} vs ${t2} ${FLAGS[t2]||''}</div>
+        <div class="mm-score">—</div>
+        <div class="mm-tag soon">HOY</div></div>`;
+    });
+
+    if(!events.length){
+      lEl.innerHTML += '<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">Sin partidos hoy</div>';
+      rEl.innerHTML += '<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">—</div>';
+    }
+
+    // Stamp update time
+    const now = new Date().toLocaleTimeString('es-MX',
+      {hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Mexico_City'});
+    const dotL  = document.getElementById('dot-live');
+    const lastL = document.getElementById('last-live');
+    if(lastL) lastL.textContent = now;
+    if(dotL)  dotL.className = 'upd-dot active';
+
+  } catch(e) {
+    console.error('ESPN API error:', e);
+    const dotL = document.getElementById('dot-live');
+    if(dotL) dotL.className = 'upd-dot error';
   }
 }
 
@@ -1043,8 +1151,23 @@ async function fullRefresh(){
     buildCal(LIVE_RESULTS);
     // Refresh sidebar if someone is selected
     if(selectedPlayer) showSidebar(selectedPlayer);
+
+    // Stamp last results update
+    const now2 = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Mexico_City'});
+    const dotR = document.getElementById('dot-results');
+    const lastR = document.getElementById('last-results');
+    const apiSt = document.getElementById('api-status');
+    const matchCount = Object.keys(LIVE_RESULTS).length;
+    if(lastR) lastR.textContent = now2;
+    if(dotR)  dotR.className = 'upd-dot active';
+    if(apiSt) apiSt.textContent = `${matchCount} partidos cargados de la API`;
+
   } catch(e) {
     console.error('Error fetching results:', e);
+    const dotR = document.getElementById('dot-results');
+    const apiSt = document.getElementById('api-status');
+    if(dotR)  dotR.className = 'upd-dot error';
+    if(apiSt) apiSt.textContent = '⚠️ Error conectando a la API';
   }
   hideLoadingState();
 }
