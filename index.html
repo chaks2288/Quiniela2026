@@ -583,7 +583,9 @@ const API_NAME_MAP = {
   'Australia':'Australia','Türkiye':'Turquia','Germany':'Alemania','Curaçao':'Curazao',
   'Netherlands':'Paises Bajos','Japan':'Japón','Ivory Coast':'C. de Marfil','Ecuador':'Ecuador',
   'Sweden':'Suecia','Tunisia':'Túnez','Spain':'España','Cape Verde':'Cabo Verde',
-  'Saudi Arabia':'Arababia S.','Uruguay':'Uruguay','Iran':'Irán','New Zealand':'Nva. Zelanda',
+  'Saudi Arabia':'Arababia S.',
+  'Spain':'España',
+  'Cape Verde':'Cabo Verde','Uruguay':'Uruguay','Iran':'Irán','New Zealand':'Nva. Zelanda',
   'Belgium':'Bélgica','Egypt':'Egipto','France':'Francia','Senegal':'Senegal',
   'Iraq':'Irak','Norway':'Noruega','Argentina':'Argentina','Algeria':'Argelia',
   'Austria':'Austria','Jordan':'Jordania','Portugal':'Portugal','DR Congo':'Congo',
@@ -606,6 +608,8 @@ function sn(name){
     'Ivory Coast':'C. de Marfil',"Cote d'Ivoire":'C. de Marfil',
     'New Zealand':'Nva. Zelanda',
     'Saudi Arabia':'Arababia S.',
+  'Spain':'España',
+  'Cape Verde':'Cabo Verde',
     'DR Congo':'Congo','Congo DR':'Congo',
   };
   if(espnExtras[name]) return espnExtras[name];
@@ -618,6 +622,7 @@ function sn(name){
 let LIVE_RESULTS = {};   // "T1 vs T2": [g1, g2]  — filled from API
 let SCORES = {};
 let sorted = [];
+let sortedAlpha = [];
 let maxScore = 1;
 let hoveredIdx = -1;
 let selectedPlayer = null;
@@ -693,7 +698,7 @@ function drawChart(hov=-1){
   const cv=document.getElementById('radar-canvas');
   const ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height,cx=W/2,cy=H/2;
-  const n=sorted.length;
+  const n=sortedAlpha.length;
   const innerR=58, outerR=206, gap=0.018;
 
   ctx.clearRect(0,0,W,H);
@@ -702,19 +707,17 @@ function drawChart(hov=-1){
     ctx.strokeStyle='rgba(0,0,0,0.05)';ctx.lineWidth=1;ctx.stroke();
   });
 
-  // On hover: ALL bars jump to this fixed height so text always fits
-  const HOVER_R = outerR; // 100% of outerR — maximum, text guaranteed to fit
-  const MIN_R   = innerR + (outerR-innerR)*0.32; // minimum for non-hover bars
+  const HOVER_R = outerR;
+  const MIN_R   = innerR+(outerR-innerR)*0.32;
 
-  sorted.forEach((player,i)=>{
+  sortedAlpha.forEach((player,i)=>{
     const baseAngle=(i/n)*Math.PI*2-Math.PI/2;
     const sliceAngle=(Math.PI*2/n)-gap;
     const rawPct=SCORES[player]/maxScore;
     const isHov=i===hov;
     const isSel=player===selectedPlayer;
 
-    // Hover: ALL bars go to full outerR regardless of score
-    const barOuter = isHov ? HOVER_R : Math.max(innerR+(outerR-innerR)*rawPct, MIN_R);
+    const barOuter=isHov ? HOVER_R : Math.max(innerR+(outerR-innerR)*rawPct, MIN_R);
 
     const gx1=cx+innerR*Math.cos(baseAngle),gy1=cy+innerR*Math.sin(baseAngle);
     const gx2=cx+barOuter*Math.cos(baseAngle),gy2=cy+barOuter*Math.sin(baseAngle);
@@ -733,45 +736,29 @@ function drawChart(hov=-1){
     if(isSel&&!isHov){ctx.strokeStyle='#CE1126';ctx.lineWidth=2;ctx.globalAlpha=.5;ctx.stroke();}
     ctx.globalAlpha=1;
 
-    // ── ROTATION: text always reads toward center ──
-    // The key insight: we want the text baseline to face the center.
-    // For a point at angle θ from center:
-    //   - right half (cos θ > 0, i.e. x > cx): rotate by θ + π/2
-    //   - left half  (cos θ < 0, i.e. x < cx): rotate by θ - π/2
-    // This makes text on right side read left-to-right inward,
-    // and text on left side read right-to-left inward (both toward center).
-    const cosA = Math.cos(baseAngle);
-    const rot = cosA >= 0 ? baseAngle + Math.PI/2 : baseAngle - Math.PI/2;
+    const cosA=Math.cos(baseAngle);
+    const rot=cosA>=0?baseAngle+Math.PI/2:baseAngle-Math.PI/2;
 
     if(isHov){
-      // Name at 38% depth inside bar
+      // Show name + pts INSIDE the bar on hover
       const nameR=innerR+(barOuter-innerR)*0.38;
       const nx=cx+nameR*Math.cos(baseAngle),ny=cy+nameR*Math.sin(baseAngle);
       ctx.save();ctx.translate(nx,ny);ctx.rotate(rot);
       ctx.fillStyle='#FFFFFF';ctx.font='800 13px Barlow Condensed';
       ctx.textAlign='center';ctx.fillText(player,0,0);
       ctx.restore();
-      // Points at 68% depth inside bar
-      const ptsR=innerR+(barOuter-innerR)*0.68;
+      const ptsR=innerR+(barOuter-innerR)*0.70;
       const px2=cx+ptsR*Math.cos(baseAngle),py2=cy+ptsR*Math.sin(baseAngle);
       ctx.save();ctx.translate(px2,py2);ctx.rotate(rot);
-      ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='700 12px Roboto Mono';
+      ctx.fillStyle='rgba(255,255,255,.88)';ctx.font='700 12px Roboto Mono';
       ctx.textAlign='center';ctx.fillText(SCORES[player]+' pts',0,0);
       ctx.restore();
     } else {
-      // Name outside bar
-      const labelR=outerR+40;
-      const lx=cx+labelR*Math.cos(baseAngle),ly=cy+labelR*Math.sin(baseAngle);
-      ctx.save();ctx.translate(lx,ly);ctx.rotate(rot);
-      ctx.fillStyle=isSel?'#CE1126':'rgba(10,10,10,0.65)';
-      ctx.font=`${isSel?800:700} 11px Barlow Condensed`;
-      ctx.textAlign='center';ctx.fillText(player,0,0);
-      ctx.restore();
-      // Points inside bar
+      // Normal: only pts number inside bar, NO name labels
       const ptR=innerR+(barOuter-innerR)*0.65;
       const px=cx+ptR*Math.cos(baseAngle),py=cy+ptR*Math.sin(baseAngle);
       ctx.save();ctx.translate(px,py);ctx.rotate(rot);
-      ctx.fillStyle='rgba(255,255,255,.92)';ctx.font='700 13px Roboto Mono';
+      ctx.fillStyle='rgba(255,255,255,.92)';ctx.font='700 12px Roboto Mono';
       ctx.textAlign='center';ctx.fillText(SCORES[player],0,0);
       ctx.restore();
     }
@@ -792,7 +779,7 @@ function getBarIdx(cv,x,y){
   if(r<58||r>230) return -1;
   let angle = Math.atan2(dy,dx)+Math.PI/2;
   if(angle<0) angle+=Math.PI*2;
-  return Math.min(Math.floor(angle/(Math.PI*2)*sorted.length), sorted.length-1);
+  return Math.min(Math.floor(angle/(Math.PI*2)*sortedAlpha.length), sortedAlpha.length-1);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -966,7 +953,10 @@ function buildCal(results){
       const real=results[key];
       const f1=FLAGS[m.t1]||'🏳', f2=FLAGS[m.t2]||'🏳';
       const sc=real?`${real[0]}-${real[1]}`:'vs';
-      rows+=`<div class="cal-row ${real?'done':''}"
+      const isTv=TV_ABIERTA.has(key);
+      const tvBadge=isTv?'<div class="tv-badge">📺 Canal 5 / Azteca 7</div>':'';
+      const tvClass=isTv?'tv-abierta':'';
+      rows+=`<div class="cal-row ${real?'done':''} ${tvClass}"
         onmouseenter="showVenue(event,'${key}')"
         onmouseleave="hideVenue()"
         onmousemove="showVenue(event,'${key}')">
@@ -975,7 +965,7 @@ function buildCal(results){
         <div class="cal-score ${real?'':'pend'}">${sc}</div>
         <div class="cal-team r">${m.t2} ${f2}</div>
         <div class="cal-g g-${m.g}">GRP ${m.g}</div>
-        ${isTv?'<div class="tv-badge">📺 TV</div>':''}
+        ${tvBadge}
       </div>`;
     });
     el.innerHTML+=`<div class="cal-day"><div class="cal-date-h">${day}</div><div class="cal-matches">${rows}</div></div>`;
@@ -1091,15 +1081,14 @@ window.addEventListener('load', async ()=>{
   cv.addEventListener('mousemove',e=>{
     const r=cv.getBoundingClientRect(),s=scale();
     const idx=getBarIdx(cv,(e.clientX-r.left)*s,(e.clientY-r.top)*s);
-    if(idx!==hoveredIdx){hoveredIdx=idx;drawChart(idx)}
+    if(idx!==hoveredIdx){
+      hoveredIdx=idx;
+      drawChart(idx);
+      if(idx>=0) showSidebar(sortedAlpha[idx]);
+    }
     cv.style.cursor=idx>=0?'pointer':'default';
   });
   cv.addEventListener('mouseleave',()=>{hoveredIdx=-1;drawChart(-1)});
-  cv.addEventListener('click',e=>{
-    const r=cv.getBoundingClientRect(),s=scale();
-    const idx=getBarIdx(cv,(e.clientX-r.left)*s,(e.clientY-r.top)*s);
-    if(idx>=0) showSidebar(sorted[idx]);
-  });
 
   // Initial full load
   await fullRefresh();
