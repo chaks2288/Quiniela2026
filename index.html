@@ -59,17 +59,7 @@ nav{position:sticky;top:0;z-index:200;background:var(--green);display:flex;align
 .score-num{font-family:var(--font-d);font-size:84px;line-height:1;color:#fff}
 .score-sep{font-family:var(--font-d);font-size:52px;color:rgba(255,255,255,.4)}
 .live-sub{font-size:11px;color:rgba(255,255,255,.55);margin-top:8px;letter-spacing:.5px}
-.update-bar{
-  background:rgba(0,0,0,.25);border-top:1px solid rgba(255,255,255,.08);
-  text-align:center;padding:8px 32px;
-  display:flex;align-items:center;justify-content:center;gap:16px;
-  font-family:var(--font-m);font-size:10px;color:rgba(255,255,255,.4);
-  letter-spacing:.5px;flex-wrap:wrap;
-}
-.update-bar .upd-item{display:flex;align-items:center;gap:6px}
-.upd-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.2)}
-.upd-dot.active{background:#39D353;animation:blink 2s ease-in-out infinite}
-.upd-dot.error{background:#FF6B6B}
+
 .upd-sep{color:rgba(255,255,255,.15)}
 .live-min{color:var(--gold2);font-family:var(--font-m);font-weight:600}
 .side-col{display:flex;flex-direction:column;gap:7px}
@@ -297,9 +287,6 @@ footer strong{color:#fff}
     <div class="side-col" id="today-right"><div class="side-label">Hoy · Próximos</div></div>
   </div>
 </section>
-<div class="update-bar">
-  <div class="upd-item">
-    <div class="upd-dot" id="dot-live"></div>
     <span>Marcador en vivo: <strong id="last-live">—</strong></span>
   </div>
   <div class="upd-sep">·</div>
@@ -614,7 +601,26 @@ const API_NAME_MAP = {
   'Uzbekistan':'Uzbekistán','Colombia':'Colombia','Bosnia':'Bosnia y Herze.',
   'Curaçao':'Curazao','Curacao':'Curazao',
 };
-function sn(name){ return API_NAME_MAP[name] || name; }
+function sn(name){
+  if(!name) return name;
+  // Direct match
+  if(API_NAME_MAP[name]) return API_NAME_MAP[name];
+  // ESPN sometimes uses short names like "USA" or "Mexico"
+  const espnExtras = {
+    'USA':'EE.UU.','United States':'EE.UU.','US':'EE.UU.',
+    'Mexico':'Mexico','México':'Mexico',
+    'Bosnia-Herzegovina':'Bosnia y Herze.','Bosnia':'Bosnia y Herze.',
+    'Curacao':'Curazao','Curaçao':'Curazao',
+    'South Korea':'Corea','Korea Republic':'Corea',
+    'Czech Republic':'Chequia','Czechia':'Chequia',
+    'Ivory Coast':'C. de Marfil',"Cote d'Ivoire":'C. de Marfil',
+    'New Zealand':'Nva. Zelanda',
+    'Saudi Arabia':'Arababia S.',
+    'DR Congo':'Congo','Congo DR':'Congo',
+  };
+  if(espnExtras[name]) return espnExtras[name];
+  return name;
+}
 
 // ═══════════════════════════════════════════════════════
 // LIVE STATE — results fetched from API
@@ -1002,7 +1008,9 @@ async function updateLiveBoard(){
       'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard'
     );
     const res = await fetch(url);
+    if(!res.ok) throw new Error('ESPN API status: ' + res.status);
     const data = await res.json();
+    console.log('ESPN events today:', data.events?.length, data.events?.map(e=>e.name));
     const events = data.events || [];
 
     // Find live match
@@ -1114,15 +1122,6 @@ async function updateLiveBoard(){
       lEl.innerHTML += '<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">Sin partidos hoy</div>';
       rEl.innerHTML += '<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">—</div>';
     }
-
-    // Stamp update time
-    const now = new Date().toLocaleTimeString('es-MX',
-      {hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Mexico_City'});
-    const dotL  = document.getElementById('dot-live');
-    const lastL = document.getElementById('last-live');
-    if(lastL) lastL.textContent = now;
-    if(dotL)  dotL.className = 'upd-dot active';
-
   } catch(e) {
     console.error('ESPN API error:', e);
     const dotL = document.getElementById('dot-live');
@@ -1151,23 +1150,8 @@ async function fullRefresh(){
     buildCal(LIVE_RESULTS);
     // Refresh sidebar if someone is selected
     if(selectedPlayer) showSidebar(selectedPlayer);
-
-    // Stamp last results update
-    const now2 = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'America/Mexico_City'});
-    const dotR = document.getElementById('dot-results');
-    const lastR = document.getElementById('last-results');
-    const apiSt = document.getElementById('api-status');
-    const matchCount = Object.keys(LIVE_RESULTS).length;
-    if(lastR) lastR.textContent = now2;
-    if(dotR)  dotR.className = 'upd-dot active';
-    if(apiSt) apiSt.textContent = `${matchCount} partidos cargados de la API`;
-
   } catch(e) {
     console.error('Error fetching results:', e);
-    const dotR = document.getElementById('dot-results');
-    const apiSt = document.getElementById('api-status');
-    if(dotR)  dotR.className = 'upd-dot error';
-    if(apiSt) apiSt.textContent = '⚠️ Error conectando a la API';
   }
   hideLoadingState();
 }
