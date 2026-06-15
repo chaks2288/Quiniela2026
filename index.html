@@ -687,8 +687,9 @@ function getPredResult(player, i, results){
 
 function recalcScores(results){
   PLAYERS.forEach(p => SCORES[p] = calcPoints(p, results));
-  sorted = [...PLAYERS].sort((a,b) => SCORES[b] - SCORES[a]);
-  maxScore = Math.max(...Object.values(SCORES), 1);
+  sorted      = [...PLAYERS].sort((a,b) => SCORES[b] - SCORES[a]);
+  sortedAlpha = [...PLAYERS].sort((a,b) => a.localeCompare(b,'es'));
+  maxScore    = Math.max(...Object.values(SCORES), 1);
 }
 
 // ═══════════════════════════════════════════════════════
