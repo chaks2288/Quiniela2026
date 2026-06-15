@@ -226,18 +226,7 @@ footer strong{color:#fff}
 }
 
 
-/* Loading overlay */
-#loading-overlay {
-  display:none; position:fixed; inset:0; z-index:500;
-  background:rgba(0,104,71,0.92); backdrop-filter:blur(4px);
-  align-items:center; justify-content:center; flex-direction:column; gap:16px;
-}
-.loading-spinner {
-  width:48px; height:48px; border:4px solid rgba(255,255,255,.2);
-  border-top-color:white; border-radius:50%;
-  animation:spin .8s linear infinite;
-}
-@keyframes spin {to{transform:rotate(360deg)}}
+
 .loading-text {
   font-family:var(--font-d); font-size:20px; letter-spacing:3px;
   color:rgba(255,255,255,.9);
@@ -250,10 +239,7 @@ footer strong{color:#fff}
 </head>
 <body>
 
-<!-- Loading overlay -->
-<div id="loading-overlay">
-  <div class="loading-spinner"></div>
-  <div class="loading-text">ACTUALIZANDO</div>
+<div class="loading-text">ACTUALIZANDO</div>
   <div class="loading-sub">Jalando resultados en tiempo real...</div>
 </div>
 
@@ -700,96 +686,99 @@ function recalcScores(results){
 // RADIAL CHART
 // ═══════════════════════════════════════════════════════
 function drawChart(hov=-1){
-  const cv = document.getElementById('radar-canvas');
-  const ctx = cv.getContext('2d');
-  const W=cv.width, H=cv.height, cx=W/2, cy=H/2;
-  const n = sorted.length;
+  const cv=document.getElementById('radar-canvas');
+  const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height,cx=W/2,cy=H/2;
+  const n=sorted.length;
   const innerR=58, outerR=206, gap=0.018;
 
   ctx.clearRect(0,0,W,H);
-
   [.25,.5,.75,1].forEach(f=>{
-    ctx.beginPath(); ctx.arc(cx,cy,innerR+(outerR-innerR)*f,0,Math.PI*2);
-    ctx.strokeStyle='rgba(0,0,0,0.05)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.beginPath();ctx.arc(cx,cy,innerR+(outerR-innerR)*f,0,Math.PI*2);
+    ctx.strokeStyle='rgba(0,0,0,0.05)';ctx.lineWidth=1;ctx.stroke();
   });
 
-  const normalMinPct = 48/(outerR-innerR);
-  const hoverFloor   = 0.58;
+  // On hover: ALL bars jump to this fixed height so text always fits
+  const HOVER_R = outerR; // 100% of outerR — maximum, text guaranteed to fit
+  const MIN_R   = innerR + (outerR-innerR)*0.32; // minimum for non-hover bars
 
-  sorted.forEach((player, i)=>{
-    const baseAngle = (i/n)*Math.PI*2 - Math.PI/2;
-    const sliceAngle = (Math.PI*2/n) - gap;
-    const rawPct = SCORES[player]/maxScore;
-    const isHov = i === hov;
-    const isSel = player === selectedPlayer;
+  sorted.forEach((player,i)=>{
+    const baseAngle=(i/n)*Math.PI*2-Math.PI/2;
+    const sliceAngle=(Math.PI*2/n)-gap;
+    const rawPct=SCORES[player]/maxScore;
+    const isHov=i===hov;
+    const isSel=player===selectedPlayer;
 
-    const barOuter = isHov
-      ? innerR + (outerR-innerR) * Math.max(rawPct*1.5, hoverFloor)
-      : innerR + (outerR-innerR) * Math.max(rawPct, normalMinPct);
+    // Hover: ALL bars go to full outerR regardless of score
+    const barOuter = isHov ? HOVER_R : Math.max(innerR+(outerR-innerR)*rawPct, MIN_R);
 
-    // Red gradient bright→dark
-    const gx1=cx+innerR*Math.cos(baseAngle), gy1=cy+innerR*Math.sin(baseAngle);
-    const gx2=cx+barOuter*Math.cos(baseAngle), gy2=cy+barOuter*Math.sin(baseAngle);
-    const grad = ctx.createLinearGradient(gx1,gy1,gx2,gy2);
+    const gx1=cx+innerR*Math.cos(baseAngle),gy1=cy+innerR*Math.sin(baseAngle);
+    const gx2=cx+barOuter*Math.cos(baseAngle),gy2=cy+barOuter*Math.sin(baseAngle);
+    const grad=ctx.createLinearGradient(gx1,gy1,gx2,gy2);
     grad.addColorStop(0,'#FF6B6B');
     grad.addColorStop(1,'#7B0010');
 
     ctx.beginPath();
-    ctx.moveTo(cx+innerR*Math.cos(baseAngle-sliceAngle/2), cy+innerR*Math.sin(baseAngle-sliceAngle/2));
-    ctx.arc(cx,cy,innerR, baseAngle-sliceAngle/2, baseAngle+sliceAngle/2);
-    ctx.arc(cx,cy,barOuter, baseAngle+sliceAngle/2, baseAngle-sliceAngle/2, true);
+    ctx.moveTo(cx+innerR*Math.cos(baseAngle-sliceAngle/2),cy+innerR*Math.sin(baseAngle-sliceAngle/2));
+    ctx.arc(cx,cy,innerR,baseAngle-sliceAngle/2,baseAngle+sliceAngle/2);
+    ctx.arc(cx,cy,barOuter,baseAngle+sliceAngle/2,baseAngle-sliceAngle/2,true);
     ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.globalAlpha = isHov?1:isSel?.95:.8;
+    ctx.fillStyle=grad;
+    ctx.globalAlpha=isHov?1:isSel?.95:.8;
     ctx.fill();
-    if(isSel && !isHov){
-      ctx.strokeStyle='#CE1126'; ctx.lineWidth=2; ctx.globalAlpha=.5; ctx.stroke();
-    }
+    if(isSel&&!isHov){ctx.strokeStyle='#CE1126';ctx.lineWidth=2;ctx.globalAlpha=.5;ctx.stroke();}
     ctx.globalAlpha=1;
 
-    // Helper: rotate text to always read toward center
-    const rotFor = (px) => px >= cx ? baseAngle+Math.PI/2 : baseAngle-Math.PI/2;
+    // ── ROTATION: text always reads toward center ──
+    // The key insight: we want the text baseline to face the center.
+    // For a point at angle θ from center:
+    //   - right half (cos θ > 0, i.e. x > cx): rotate by θ + π/2
+    //   - left half  (cos θ < 0, i.e. x < cx): rotate by θ - π/2
+    // This makes text on right side read left-to-right inward,
+    // and text on left side read right-to-left inward (both toward center).
+    const cosA = Math.cos(baseAngle);
+    const rot = cosA >= 0 ? baseAngle + Math.PI/2 : baseAngle - Math.PI/2;
 
     if(isHov){
-      // Name at 40% depth
-      const nameR = innerR+(barOuter-innerR)*.40;
-      const nx=cx+nameR*Math.cos(baseAngle), ny=cy+nameR*Math.sin(baseAngle);
-      ctx.save(); ctx.translate(nx,ny); ctx.rotate(rotFor(nx));
-      ctx.fillStyle='#FFFFFF'; ctx.font='800 13px Barlow Condensed';
-      ctx.textAlign='center'; ctx.fillText(player,0,0);
+      // Name at 38% depth inside bar
+      const nameR=innerR+(barOuter-innerR)*0.38;
+      const nx=cx+nameR*Math.cos(baseAngle),ny=cy+nameR*Math.sin(baseAngle);
+      ctx.save();ctx.translate(nx,ny);ctx.rotate(rot);
+      ctx.fillStyle='#FFFFFF';ctx.font='800 13px Barlow Condensed';
+      ctx.textAlign='center';ctx.fillText(player,0,0);
       ctx.restore();
-      // Points at 72% depth
-      const ptsR = innerR+(barOuter-innerR)*.72;
-      const px2=cx+ptsR*Math.cos(baseAngle), py2=cy+ptsR*Math.sin(baseAngle);
-      ctx.save(); ctx.translate(px2,py2); ctx.rotate(rotFor(px2));
-      ctx.fillStyle='rgba(255,255,255,.88)'; ctx.font='700 13px Roboto Mono';
-      ctx.textAlign='center'; ctx.fillText(SCORES[player]+' pts',0,0);
+      // Points at 68% depth inside bar
+      const ptsR=innerR+(barOuter-innerR)*0.68;
+      const px2=cx+ptsR*Math.cos(baseAngle),py2=cy+ptsR*Math.sin(baseAngle);
+      ctx.save();ctx.translate(px2,py2);ctx.rotate(rot);
+      ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='700 12px Roboto Mono';
+      ctx.textAlign='center';ctx.fillText(SCORES[player]+' pts',0,0);
       ctx.restore();
     } else {
-      // Name outside
-      const labelR = outerR+40;
-      const lx=cx+labelR*Math.cos(baseAngle), ly=cy+labelR*Math.sin(baseAngle);
-      ctx.save(); ctx.translate(lx,ly); ctx.rotate(rotFor(lx));
-      ctx.fillStyle = isSel?'#CE1126':'rgba(10,10,10,0.65)';
+      // Name outside bar
+      const labelR=outerR+40;
+      const lx=cx+labelR*Math.cos(baseAngle),ly=cy+labelR*Math.sin(baseAngle);
+      ctx.save();ctx.translate(lx,ly);ctx.rotate(rot);
+      ctx.fillStyle=isSel?'#CE1126':'rgba(10,10,10,0.65)';
       ctx.font=`${isSel?800:700} 11px Barlow Condensed`;
-      ctx.textAlign='center'; ctx.fillText(player,0,0);
+      ctx.textAlign='center';ctx.fillText(player,0,0);
       ctx.restore();
       // Points inside bar
-      const ptR = innerR+(barOuter-innerR)*.65;
-      const px=cx+ptR*Math.cos(baseAngle), py=cy+ptR*Math.sin(baseAngle);
-      ctx.save(); ctx.translate(px,py); ctx.rotate(rotFor(px));
-      ctx.fillStyle='rgba(255,255,255,.92)'; ctx.font='700 13px Roboto Mono';
-      ctx.textAlign='center'; ctx.fillText(SCORES[player],0,0);
+      const ptR=innerR+(barOuter-innerR)*0.65;
+      const px=cx+ptR*Math.cos(baseAngle),py=cy+ptR*Math.sin(baseAngle);
+      ctx.save();ctx.translate(px,py);ctx.rotate(rot);
+      ctx.fillStyle='rgba(255,255,255,.92)';ctx.font='700 13px Roboto Mono';
+      ctx.textAlign='center';ctx.fillText(SCORES[player],0,0);
       ctx.restore();
     }
   });
 
   // Center
-  ctx.beginPath(); ctx.arc(cx,cy,innerR-4,0,Math.PI*2);
-  ctx.fillStyle='rgba(206,17,38,0.07)'; ctx.fill();
-  ctx.fillStyle='rgba(0,0,0,0.4)'; ctx.font='600 10px Barlow Condensed'; ctx.textAlign='center';
+  ctx.beginPath();ctx.arc(cx,cy,innerR-4,0,Math.PI*2);
+  ctx.fillStyle='rgba(206,17,38,0.07)';ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.4)';ctx.font='600 10px Barlow Condensed';ctx.textAlign='center';
   ctx.fillText('QUINIELA',cx,cy-5);
-  ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.font='600 9px Barlow Condensed';
+  ctx.fillStyle='rgba(0,0,0,0.25)';ctx.font='600 9px Barlow Condensed';
   ctx.fillText('2026',cx,cy+8);
 }
 
@@ -1003,154 +992,95 @@ async function updateLiveBoard(){
   rEl.innerHTML='<div class="side-label">Hoy · Próximos</div>';
 
   try {
-    // ESPN public API — no key needed, real-time scores
-    const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
-    const proxies = [
-      'https://api.allorigins.win/raw?url=',
-      'https://corsproxy.io/?url=',
-      'https://proxy.cors.sh/',
-    ];
-    let data = null;
-    for(const px of proxies){
-      try{
-        const r = await fetch(px + encodeURIComponent(ESPN_URL));
-        if(!r.ok) continue;
-        data = await r.json();
-        if(data.events !== undefined) break;
-      } catch(e){ continue; }
-    }
-    if(!data) throw new Error('All proxies failed');
-    console.log('ESPN events today:', data.events?.length);
-    const events = data.events || [];
-
-    // Find live match
-    const live = events.filter(e => {
-      const st = e.competitions?.[0]?.status?.type?.name;
-      return st === 'STATUS_IN_PROGRESS' || st === 'STATUS_HALFTIME';
-    });
-
-    const finished = events.filter(e =>
-      e.competitions?.[0]?.status?.type?.name === 'STATUS_FINAL'
+    const today = new Date().toISOString().split('T')[0];
+    // Fetch today's matches (includes IN_PLAY status with live scores)
+    const url = PROXY + encodeURIComponent(
+      `https://api.football-data.org/v4/competitions/WC/matches?dateFrom=${today}&dateTo=${today}`
     );
+    const res = await fetch(url, { headers: { 'X-Auth-Token': API_KEY } });
+    if(!res.ok) throw new Error('API status: ' + res.status);
+    const data = await res.json();
+    const all = data.matches || [];
 
-    const upcoming = events.filter(e => {
-      const st = e.competitions?.[0]?.status?.type?.name;
-      return st === 'STATUS_SCHEDULED' || st === 'STATUS_POSTPONED';
-    });
+    const live     = all.filter(m => m.status === 'IN_PLAY' || m.status === 'PAUSED');
+    const finished = all.filter(m => m.status === 'FINISHED');
+    const upcoming = all.filter(m => m.status === 'TIMED' || m.status === 'SCHEDULED');
 
     if(live.length > 0){
-      const match = live[0];
-      const comp  = match.competitions[0];
-      const status = comp.status;
-      const home = comp.competitors.find(t => t.homeAway === 'home');
-      const away = comp.competitors.find(t => t.homeAway === 'away');
-      const t1 = sn(home.team.displayName);
-      const t2 = sn(away.team.displayName);
-
+      const m = live[0];
+      const t1 = sn(m.homeTeam.name), t2 = sn(m.awayTeam.name);
       document.getElementById('lt1').textContent = t1;
       document.getElementById('lt2').textContent = t2;
       document.getElementById('lf1').textContent = FLAGS[t1] || '⚽';
       document.getElementById('lf2').textContent = FLAGS[t2] || '⚽';
-      document.getElementById('ls1').textContent = home.score || '0';
-      document.getElementById('ls2').textContent = away.score || '0';
-      document.getElementById('lmin').textContent = status.displayClock
-        ? status.displayClock + "'"
-        : (status.type?.shortDetail || 'EN VIVO');
-      document.getElementById('lvenue').textContent =
-        comp.venue?.fullName || '';
+      document.getElementById('ls1').textContent = m.score?.fullTime?.home ?? m.score?.halfTime?.home ?? '0';
+      document.getElementById('ls2').textContent = m.score?.fullTime?.away ?? m.score?.halfTime?.away ?? '0';
+      document.getElementById('lmin').textContent = m.minute ? `${m.minute}'` : 'EN VIVO';
+      document.getElementById('lvenue').textContent = m.venue || '';
       document.getElementById('live-status-text').textContent = 'EN VIVO';
-
     } else if(upcoming.length > 0){
-      const match = upcoming[0];
-      const comp  = match.competitions[0];
-      const home = comp.competitors.find(t => t.homeAway === 'home');
-      const away = comp.competitors.find(t => t.homeAway === 'away');
-      const t1 = sn(home.team.displayName);
-      const t2 = sn(away.team.displayName);
-
+      const m = upcoming[0];
+      const t1 = sn(m.homeTeam.name), t2 = sn(m.awayTeam.name);
       document.getElementById('lt1').textContent = t1;
       document.getElementById('lt2').textContent = t2;
       document.getElementById('lf1').textContent = FLAGS[t1] || '⚽';
       document.getElementById('lf2').textContent = FLAGS[t2] || '⚽';
       document.getElementById('ls1').textContent = '—';
       document.getElementById('ls2').textContent = '—';
-      const kickoff = new Date(match.date).toLocaleTimeString('es-MX',
+      const kickoff = new Date(m.utcDate).toLocaleTimeString('es-MX',
         {hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
       document.getElementById('lmin').textContent = kickoff;
       document.getElementById('lvenue').textContent = 'hora México';
       document.getElementById('live-status-text').textContent = 'PRÓXIMO';
-
     } else if(finished.length > 0){
-      // All done today — show last result
-      const match = finished[finished.length-1];
-      const comp  = match.competitions[0];
-      const home = comp.competitors.find(t => t.homeAway === 'home');
-      const away = comp.competitors.find(t => t.homeAway === 'away');
-      const t1 = sn(home.team.displayName);
-      const t2 = sn(away.team.displayName);
+      const m = finished[finished.length - 1];
+      const t1 = sn(m.homeTeam.name), t2 = sn(m.awayTeam.name);
       document.getElementById('lt1').textContent = t1;
       document.getElementById('lt2').textContent = t2;
       document.getElementById('lf1').textContent = FLAGS[t1] || '⚽';
       document.getElementById('lf2').textContent = FLAGS[t2] || '⚽';
-      document.getElementById('ls1').textContent = home.score || '—';
-      document.getElementById('ls2').textContent = away.score || '—';
+      document.getElementById('ls1').textContent = m.score?.fullTime?.home ?? '—';
+      document.getElementById('ls2').textContent = m.score?.fullTime?.away ?? '—';
       document.getElementById('lmin').textContent = 'FT';
       document.getElementById('lvenue').textContent = 'Partido terminado';
       document.getElementById('live-status-text').textContent = 'FINALIZADO';
     }
 
     // Side panels
-    finished.slice(0,4).forEach(e => {
-      const comp = e.competitions[0];
-      const home = comp.competitors.find(t => t.homeAway === 'home');
-      const away = comp.competitors.find(t => t.homeAway === 'away');
-      const t1 = sn(home.team.displayName), t2 = sn(away.team.displayName);
-      const kickoff = new Date(e.date).toLocaleTimeString('es-MX',
+    finished.slice(0,4).forEach(m => {
+      const t1 = sn(m.homeTeam.name), t2 = sn(m.awayTeam.name);
+      const k = new Date(m.utcDate).toLocaleTimeString('es-MX',
         {hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
       lEl.innerHTML += `<div class="mm">
-        <div class="mm-time">${kickoff}</div>
+        <div class="mm-time">${k}</div>
         <div class="mm-teams">${FLAGS[t1]||''} ${t1} vs ${t2} ${FLAGS[t2]||''}</div>
-        <div class="mm-score">${home.score}-${away.score}</div>
+        <div class="mm-score">${m.score?.fullTime?.home}-${m.score?.fullTime?.away}</div>
         <div class="mm-tag done">FIN</div></div>`;
     });
-
-    upcoming.slice(0,4).forEach(e => {
-      const comp = e.competitions[0];
-      const home = comp.competitors.find(t => t.homeAway === 'home');
-      const away = comp.competitors.find(t => t.homeAway === 'away');
-      const t1 = sn(home.team.displayName), t2 = sn(away.team.displayName);
-      const kickoff = new Date(e.date).toLocaleTimeString('es-MX',
+    upcoming.slice(0,4).forEach(m => {
+      const t1 = sn(m.homeTeam.name), t2 = sn(m.awayTeam.name);
+      const k = new Date(m.utcDate).toLocaleTimeString('es-MX',
         {hour:'2-digit',minute:'2-digit',timeZone:'America/Mexico_City'});
       rEl.innerHTML += `<div class="mm">
-        <div class="mm-time">${kickoff}</div>
+        <div class="mm-time">${k}</div>
         <div class="mm-teams">${FLAGS[t1]||''} ${t1} vs ${t2} ${FLAGS[t2]||''}</div>
         <div class="mm-score">—</div>
         <div class="mm-tag soon">HOY</div></div>`;
     });
-
-    if(!events.length){
+    if(!all.length){
       lEl.innerHTML += '<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">Sin partidos hoy</div>';
       rEl.innerHTML += '<div style="color:rgba(255,255,255,.4);font-size:12px;padding:8px 0">—</div>';
     }
-  } catch(e) {
-    console.error('ESPN API error:', e);
-    const dotL = document.getElementById('dot-live');
-    if(dotL) dotL.className = 'upd-dot error';
+  } catch(e){
+    console.error('Live board error:', e);
   }
 }
 
 // ═══════════════════════════════════════════════════════
 // FULL REFRESH — results + scores + all UI
 // ═══════════════════════════════════════════════════════
-function showLoadingState(){
-  document.getElementById('loading-overlay').style.display='flex';
-}
-function hideLoadingState(){
-  document.getElementById('loading-overlay').style.display='none';
-}
 
 async function fullRefresh(){
-  showLoadingState();
   try {
     LIVE_RESULTS = await fetchAllResults();
     recalcScores(LIVE_RESULTS);
@@ -1163,7 +1093,6 @@ async function fullRefresh(){
   } catch(e) {
     console.error('Error fetching results:', e);
   }
-  hideLoadingState();
 }
 
 // ═══════════════════════════════════════════════════════
