@@ -1004,13 +1004,23 @@ async function updateLiveBoard(){
 
   try {
     // ESPN public API — no key needed, real-time scores
-    const url = PROXY + encodeURIComponent(
-      'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard'
-    );
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('ESPN API status: ' + res.status);
-    const data = await res.json();
-    console.log('ESPN events today:', data.events?.length, data.events?.map(e=>e.name));
+    const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard';
+    const proxies = [
+      'https://api.allorigins.win/raw?url=',
+      'https://corsproxy.io/?url=',
+      'https://proxy.cors.sh/',
+    ];
+    let data = null;
+    for(const px of proxies){
+      try{
+        const r = await fetch(px + encodeURIComponent(ESPN_URL));
+        if(!r.ok) continue;
+        data = await r.json();
+        if(data.events !== undefined) break;
+      } catch(e){ continue; }
+    }
+    if(!data) throw new Error('All proxies failed');
+    console.log('ESPN events today:', data.events?.length);
     const events = data.events || [];
 
     // Find live match
